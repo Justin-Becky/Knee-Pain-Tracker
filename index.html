@@ -1,0 +1,976 @@
+<!--
+  ============================================================
+  KNEE PAIN TRACKER — Setup Guide
+  ============================================================
+
+  1. CREATE A FIREBASE PROJECT
+     a. Go to https://console.firebase.google.com/
+     b. Click "Add project" and follow the steps (analytics optional)
+     c. Once created, click the web icon </> to register a web app
+     d. Copy the firebaseConfig object shown after registration
+
+  2. ENABLE FIRESTORE
+     a. In Firebase Console sidebar: Build > Firestore Database
+     b. Click "Create database"
+     c. Choose "Start in test mode" (lets you read/write for 30 days)
+     d. Pick a region close to you and click "Done"
+     e. To keep access beyond 30 days, update the security rules:
+        rules_version = '2';
+        service cloud.firestore {
+          match /databases/{database}/documents {
+            match /pain_logs/{doc} {
+              allow read, write: if true;
+            }
+          }
+        }
+
+  3. PASTE YOUR CONFIG
+     Find the comment "REPLACE THIS CONFIG" below and replace the
+     placeholder firebaseConfig object with your own values.
+
+  4. DEPLOY TO GITHUB PAGES
+     a. Create a new GitHub repository (public)
+     b. Upload this index.html to the repository root
+     c. Go to the repo Settings > Pages
+     d. Under "Source", select "Deploy from a branch"
+     e. Choose the main branch and / (root) folder, then Save
+     f. Your app will be live at https://yourusername.github.io/reponame/
+  ============================================================
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Knee Pain Tracker</title>
+  <style>
+    /* --- VARIABLES --- */
+    :root {
+      --bg-primary:    #0d1117;
+      --bg-secondary:  #161b27;
+      --bg-card:       #1e2438;
+      --bg-card-alt:   #252b42;
+      --border:        #2a3050;
+      --text-primary:  #e6e9f4;
+      --text-secondary:#8892b0;
+      --text-muted:    #4a5272;
+      --accent:        #4ec9b0;
+      --accent-dark:   #2e9b8a;
+      --accent-glow:   rgba(78, 201, 176, 0.18);
+      --success:       #6bcb77;
+      --danger:        #e05c5c;
+      --nav-h:         64px;
+      --r-sm:          8px;
+      --r-md:          14px;
+      --r-lg:          22px;
+      --ease:          0.18s ease;
+    }
+
+    /* --- RESET --- */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 16px; -webkit-tap-highlight-color: transparent; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+    }
+
+    /* --- APP SHELL --- */
+    #app {
+      width: 100%;
+      max-width: 480px;
+      min-height: 100vh;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* --- ERROR BANNER --- */
+    #error-banner {
+      display: none;
+      position: sticky;
+      top: 0;
+      z-index: 200;
+      background: var(--danger);
+      color: #fff;
+      padding: 11px 18px;
+      font-size: 0.82rem;
+      text-align: center;
+      line-height: 1.4;
+    }
+    #error-banner.show { display: block; }
+
+    /* --- SCREENS --- */
+    .screen {
+      display: none;
+      flex-direction: column;
+      flex: 1;
+      padding: 32px 20px calc(var(--nav-h) + 24px);
+      animation: pop-in 0.22s ease both;
+    }
+    .screen.active { display: flex; }
+
+    @keyframes pop-in {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* --- HEADINGS --- */
+    .screen-title {
+      font-size: 1.45rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      margin-bottom: 3px;
+    }
+    .screen-sub {
+      font-size: 0.83rem;
+      color: var(--text-secondary);
+      margin-bottom: 28px;
+    }
+
+    /* ============================================================
+       LOG SCREEN
+    ============================================================ */
+    #date-label {
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 6px;
+    }
+
+    .pain-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 10px;
+      margin: 20px 0 12px;
+    }
+
+    /* Base button style */
+    .pain-btn {
+      aspect-ratio: 1;
+      border-radius: var(--r-md);
+      border: 2px solid transparent;
+      font-size: 1.25rem;
+      font-weight: 700;
+      cursor: pointer;
+      outline: none;
+      transition:
+        transform var(--ease),
+        box-shadow var(--ease),
+        border-color var(--ease),
+        background var(--ease);
+    }
+    .pain-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .pain-btn:hover { transform: scale(1.07); }
+    .pain-btn.selected { transform: scale(1.12); }
+
+    /* Per-level colors: normal state = tinted background, colored text */
+    .pain-btn[data-v="1"]  { background: rgba(67,160,71,.18);  color:#43a047; }
+    .pain-btn[data-v="2"]  { background: rgba(102,187,106,.18);color:#66bb6a; }
+    .pain-btn[data-v="3"]  { background: rgba(156,204,101,.18);color:#9ccc65; }
+    .pain-btn[data-v="4"]  { background: rgba(212,225,87,.18); color:#d4e157; }
+    .pain-btn[data-v="5"]  { background: rgba(255,238,88,.18); color:#ffee58; }
+    .pain-btn[data-v="6"]  { background: rgba(255,167,38,.18); color:#ffa726; }
+    .pain-btn[data-v="7"]  { background: rgba(255,112,67,.18); color:#ff7043; }
+    .pain-btn[data-v="8"]  { background: rgba(239,83,80,.18);  color:#ef5350; }
+    .pain-btn[data-v="9"]  { background: rgba(229,57,53,.18);  color:#e53935; }
+    .pain-btn[data-v="10"] { background: rgba(183,28,28,.18);  color:#ef534f; }
+
+    /* Per-level colors: selected state = solid tint + glowing border + white text */
+    .pain-btn[data-v="1"].selected  { background:rgba(67,160,71,.42);  border-color:#43a047; color:#fff; box-shadow:0 0 18px rgba(67,160,71,.5); }
+    .pain-btn[data-v="2"].selected  { background:rgba(102,187,106,.42);border-color:#66bb6a; color:#fff; box-shadow:0 0 18px rgba(102,187,106,.5); }
+    .pain-btn[data-v="3"].selected  { background:rgba(156,204,101,.42);border-color:#9ccc65; color:#fff; box-shadow:0 0 18px rgba(156,204,101,.5); }
+    .pain-btn[data-v="4"].selected  { background:rgba(212,225,87,.42); border-color:#d4e157; color:#fff; box-shadow:0 0 18px rgba(212,225,87,.5); }
+    .pain-btn[data-v="5"].selected  { background:rgba(255,238,88,.42); border-color:#ffee58; color:#fff; box-shadow:0 0 18px rgba(255,238,88,.5); }
+    .pain-btn[data-v="6"].selected  { background:rgba(255,167,38,.42); border-color:#ffa726; color:#fff; box-shadow:0 0 18px rgba(255,167,38,.5); }
+    .pain-btn[data-v="7"].selected  { background:rgba(255,112,67,.42); border-color:#ff7043; color:#fff; box-shadow:0 0 18px rgba(255,112,67,.5); }
+    .pain-btn[data-v="8"].selected  { background:rgba(239,83,80,.42);  border-color:#ef5350; color:#fff; box-shadow:0 0 18px rgba(239,83,80,.5); }
+    .pain-btn[data-v="9"].selected  { background:rgba(229,57,53,.42);  border-color:#e53935; color:#fff; box-shadow:0 0 18px rgba(229,57,53,.5); }
+    .pain-btn[data-v="10"].selected { background:rgba(183,28,28,.42);  border-color:#ef534f; color:#fff; box-shadow:0 0 18px rgba(183,28,28,.5); }
+
+    #pain-desc {
+      text-align: center;
+      font-size: 0.88rem;
+      color: var(--text-secondary);
+      min-height: 1.3em;
+      margin-bottom: 22px;
+      transition: color var(--ease);
+    }
+
+    #save-btn {
+      width: 100%;
+      padding: 15px;
+      border: none;
+      border-radius: var(--r-md);
+      background: var(--accent);
+      color: #0d1117;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      letter-spacing: 0.02em;
+      transition: background var(--ease), transform var(--ease), opacity var(--ease);
+      opacity: 0.35;
+      pointer-events: none;
+    }
+    #save-btn.ready { opacity: 1; pointer-events: auto; }
+    #save-btn.ready:hover { background: var(--accent-dark); transform: translateY(-1px); }
+    #save-btn.ready:active { transform: translateY(0); }
+
+    #success-msg {
+      text-align: center;
+      margin-top: 13px;
+      font-size: 0.88rem;
+      color: var(--success);
+      opacity: 0;
+      transition: opacity 0.35s ease;
+    }
+    #success-msg.show { opacity: 1; }
+
+    /* ============================================================
+       CHART SCREEN
+    ============================================================ */
+    .range-tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 18px;
+    }
+    .range-tab {
+      flex: 1;
+      padding: 9px 0;
+      border: 1px solid var(--border);
+      border-radius: var(--r-sm);
+      background: var(--bg-card);
+      color: var(--text-secondary);
+      font-size: 0.83rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all var(--ease);
+    }
+    .range-tab.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #0d1117;
+    }
+
+    .chart-box {
+      background: var(--bg-card);
+      border-radius: var(--r-md);
+      padding: 14px 12px 10px;
+      margin-bottom: 16px;
+      position: relative;
+      min-height: 180px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #pain-chart { width: 100% !important; }
+    #chart-empty {
+      position: absolute;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.88rem;
+      display: none;
+    }
+    #chart-empty.show { display: block; }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .stat-card {
+      background: var(--bg-card);
+      border-radius: var(--r-md);
+      padding: 14px 16px;
+    }
+    .stat-lbl {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+    .stat-val {
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+    .stat-detail {
+      font-size: 0.72rem;
+      color: var(--text-secondary);
+      margin-top: 2px;
+    }
+    .trend-card {
+      grid-column: span 2;
+      background: var(--bg-card);
+      border-radius: var(--r-md);
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .trend-arrow { font-size: 1.6rem; line-height: 1; }
+    .trend-main { font-size: 0.95rem; font-weight: 600; color: var(--text-primary); }
+    .trend-detail { font-size: 0.78rem; color: var(--text-secondary); margin-top: 2px; }
+
+    /* ============================================================
+       HISTORY SCREEN
+    ============================================================ */
+    #history-list { display: flex; flex-direction: column; gap: 9px; }
+
+    .h-row-wrap { display: flex; flex-direction: column; gap: 0; }
+
+    .h-item {
+      display: flex;
+      align-items: center;
+      gap: 13px;
+      background: var(--bg-card);
+      border-radius: var(--r-md);
+      padding: 14px 16px;
+      transition: background var(--ease);
+    }
+    .h-item:hover { background: var(--bg-card-alt); }
+
+    .h-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .h-date {
+      flex: 1;
+      font-size: 0.88rem;
+      color: var(--text-secondary);
+    }
+    .h-level {
+      font-size: 1.05rem;
+      font-weight: 700;
+      min-width: 22px;
+      text-align: right;
+    }
+    .h-del {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--text-muted);
+      padding: 4px 8px;
+      border-radius: var(--r-sm);
+      font-size: 0.95rem;
+      line-height: 1;
+      transition: color var(--ease), background var(--ease);
+    }
+    .h-del:hover { color: var(--danger); background: rgba(224,92,92,.12); }
+
+    .h-confirm {
+      display: none;
+      flex-direction: column;
+      gap: 8px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-top: none;
+      border-radius: 0 0 var(--r-md) var(--r-md);
+      padding: 12px 16px;
+      animation: pop-in 0.15s ease both;
+    }
+    .h-confirm.show { display: flex; }
+    .h-confirm-text { font-size: 0.82rem; color: var(--text-secondary); }
+    .h-confirm-row { display: flex; gap: 8px; }
+    .h-yes, .h-no {
+      flex: 1;
+      padding: 8px;
+      border: none;
+      border-radius: var(--r-sm);
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity var(--ease);
+    }
+    .h-yes { background: var(--danger); color: #fff; }
+    .h-yes:hover { opacity: 0.82; }
+    .h-no  { background: var(--bg-secondary); color: var(--text-secondary); }
+    .h-no:hover { opacity: 0.82; }
+
+    /* --- EMPTY STATE --- */
+    .empty {
+      padding: 48px 20px;
+      text-align: center;
+      color: var(--text-muted);
+    }
+    .empty-icon { font-size: 2.8rem; margin-bottom: 14px; }
+    .empty-text { font-size: 0.9rem; line-height: 1.6; }
+
+    /* ============================================================
+       BOTTOM NAV
+    ============================================================ */
+    #nav {
+      position: fixed;
+      bottom: 0;
+      width: 100%;
+      max-width: 480px;
+      height: var(--nav-h);
+      background: var(--bg-secondary);
+      border-top: 1px solid var(--border);
+      display: flex;
+      z-index: 100;
+    }
+    .nav-btn {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--text-muted);
+      font-size: 0.67rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      transition: color var(--ease);
+      padding: 0;
+    }
+    .nav-btn svg {
+      width: 21px;
+      height: 21px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .nav-btn.active { color: var(--accent); }
+    .nav-btn:not(.active):hover { color: var(--text-secondary); }
+  </style>
+</head>
+<body>
+
+<div id="app">
+  <div id="error-banner"></div>
+
+  <!-- LOG SCREEN -->
+  <section id="screen-log" class="screen active">
+    <p id="date-label"></p>
+    <h1 class="screen-title">Morning check-in</h1>
+    <p class="screen-sub">How's your knee feeling today?</p>
+    <div class="pain-grid" id="pain-grid"></div>
+    <p id="pain-desc">Select a level above</p>
+    <button id="save-btn">Save</button>
+    <p id="success-msg"></p>
+  </section>
+
+  <!-- CHART SCREEN -->
+  <section id="screen-chart" class="screen">
+    <h1 class="screen-title">Trends</h1>
+    <p class="screen-sub">Your pain levels over time</p>
+
+    <div class="range-tabs">
+      <button class="range-tab active" data-r="7">7 days</button>
+      <button class="range-tab" data-r="30">30 days</button>
+      <button class="range-tab" data-r="all">All time</button>
+    </div>
+
+    <div class="chart-box">
+      <canvas id="pain-chart"></canvas>
+      <p id="chart-empty">No entries in this range yet.</p>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-lbl">Average</div>
+        <div class="stat-val" id="st-avg">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-lbl">Lowest</div>
+        <div class="stat-val" id="st-low">—</div>
+        <div class="stat-detail" id="st-low-d"></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-lbl">Highest</div>
+        <div class="stat-val" id="st-high">—</div>
+        <div class="stat-detail" id="st-high-d"></div>
+      </div>
+      <div class="trend-card">
+        <div class="trend-arrow" id="tr-icon">—</div>
+        <div>
+          <div class="trend-main" id="tr-main">Not enough data</div>
+          <div class="trend-detail" id="tr-detail"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- HISTORY SCREEN -->
+  <section id="screen-history" class="screen">
+    <h1 class="screen-title">History</h1>
+    <p class="screen-sub">All your logged entries</p>
+    <div id="history-list"></div>
+  </section>
+
+  <!-- BOTTOM NAV -->
+  <nav id="nav">
+    <button class="nav-btn active" data-screen="log">
+      <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2.5"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+      Log
+    </button>
+    <button class="nav-btn" data-screen="chart">
+      <svg viewBox="0 0 24 24"><polyline points="3 17 9 11 13 15 21 7"/><line x1="3" y1="21" x2="21" y2="21"/></svg>
+      Chart
+    </button>
+    <button class="nav-btn" data-screen="history">
+      <svg viewBox="0 0 24 24"><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/><circle cx="4" cy="6" r="1.2" fill="currentColor" stroke="none"/><circle cx="4" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="4" cy="18" r="1.2" fill="currentColor" stroke="none"/></svg>
+      History
+    </button>
+  </nav>
+</div>
+
+<!-- Firebase compat SDK (v9) -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+
+<script>
+// --- FIREBASE ---
+// REPLACE THIS CONFIG with your own from the Firebase Console
+const firebaseConfig = {
+  apiKey: "AIzaSyD3Ajt_j3fv9AtIITQy1HxSCpuAmwUTWNQ",
+  authDomain: "knee-pain-tracker.firebaseapp.com",
+  projectId: "knee-pain-tracker",
+  storageBucket: "knee-pain-tracker.firebasestorage.app",
+  messagingSenderId: "232350692581",
+  appId: "1:232350692581:web:e9e80806036d8b4950500c",
+  measurementId: "G-FJRMLLTTM2"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db  = firebase.firestore();
+const col = db.collection("pain_logs");
+
+// --- STATE ---
+let allLogs      = [];  // [{ id, date, level, timestamp }]
+let pickedLevel  = null;
+let todayId      = null; // Firestore doc id for today's entry if it exists
+let chart        = null;
+let activeRange  = "7";
+
+// --- HELPERS ---
+function todayStr() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function fmtDate(str) {
+  const [y, m, d] = str.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString("en-US", {
+    month: "short", day: "numeric", year: "numeric"
+  });
+}
+
+const PAIN_COLORS = [
+  "", "#43a047","#66bb6a","#9ccc65","#d4e157","#ffee58",
+  "#ffa726","#ff7043","#ef5350","#e53935","#ef534f"
+];
+const PAIN_DESCS = [
+  "","No pain","Minimal","Mild","Moderate","Noticeable",
+  "Uncomfortable","Significant","Severe","Very severe","Worst possible"
+];
+
+function painColor(lvl) { return PAIN_COLORS[lvl] || "#8892b0"; }
+function painDesc(lvl)  { return PAIN_DESCS[lvl]  || ""; }
+
+function showError(msg) {
+  const el = document.getElementById("error-banner");
+  el.textContent = msg;
+  el.classList.add("show");
+}
+function hideError() {
+  document.getElementById("error-banner").classList.remove("show");
+}
+
+// --- DATA ---
+async function loadAll() {
+  try {
+    const snap = await col.orderBy("date", "asc").get();
+    allLogs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    hideError();
+  } catch (e) {
+    showError("Cannot reach the database. Check your Firebase config and internet connection.");
+    return;
+  }
+
+  const today = todayStr();
+  const existing = allLogs.find(l => l.date === today);
+  if (existing) {
+    todayId = existing.id;
+    applySelection(existing.level);
+  }
+
+  renderHistory();
+  if (document.getElementById("screen-chart").classList.contains("active")) {
+    renderChart();
+  }
+}
+
+// --- LOG SCREEN ---
+function buildPainGrid() {
+  const grid = document.getElementById("pain-grid");
+  for (let i = 1; i <= 10; i++) {
+    const btn = document.createElement("button");
+    btn.className = "pain-btn";
+    btn.dataset.v = i;
+    btn.textContent = i;
+    btn.setAttribute("aria-label", `Pain level ${i}: ${painDesc(i)}`);
+    btn.addEventListener("click", () => applySelection(i));
+    grid.appendChild(btn);
+  }
+
+  document.getElementById("save-btn").addEventListener("click", saveEntry);
+}
+
+function applySelection(lvl) {
+  pickedLevel = lvl;
+  document.querySelectorAll(".pain-btn").forEach(b => {
+    b.classList.toggle("selected", +b.dataset.v === lvl);
+  });
+  const desc = document.getElementById("pain-desc");
+  desc.textContent = lvl ? `Level ${lvl} — ${painDesc(lvl)}` : "Select a level above";
+
+  const btn = document.getElementById("save-btn");
+  if (lvl) {
+    btn.classList.add("ready");
+    btn.textContent = todayId ? "Update" : "Save";
+  } else {
+    btn.classList.remove("ready");
+    btn.textContent = "Save";
+  }
+}
+
+async function saveEntry() {
+  if (!pickedLevel) return;
+
+  const today    = todayStr();
+  const saveBtn  = document.getElementById("save-btn");
+  const isNew    = !todayId;
+
+  saveBtn.classList.remove("ready");
+  saveBtn.textContent = "Saving…";
+
+  const data = {
+    date:      today,
+    level:     pickedLevel,
+    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+  };
+
+  try {
+    if (isNew) {
+      const ref = await col.add(data);
+      todayId = ref.id;
+      allLogs.push({ id: todayId, ...data });
+      allLogs.sort((a, b) => a.date.localeCompare(b.date));
+    } else {
+      await col.doc(todayId).set(data);
+      const idx = allLogs.findIndex(l => l.id === todayId);
+      if (idx >= 0) allLogs[idx] = { id: todayId, ...data };
+    }
+
+    hideError();
+    saveBtn.classList.add("ready");
+    saveBtn.textContent = "Update";
+
+    const msg = document.getElementById("success-msg");
+    msg.textContent = isNew ? "Saved!" : "Updated!";
+    msg.classList.add("show");
+    setTimeout(() => msg.classList.remove("show"), 2600);
+
+    renderHistory();
+    if (document.getElementById("screen-chart").classList.contains("active")) {
+      renderChart();
+    }
+  } catch (e) {
+    showError("Save failed. Check your connection.");
+    saveBtn.classList.add("ready");
+    saveBtn.textContent = isNew ? "Save" : "Update";
+  }
+}
+
+// --- CHART SCREEN ---
+function logsInRange(range) {
+  if (range === "all") return allLogs;
+  const days   = parseInt(range, 10);
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - (days - 1));
+  cutoff.setHours(0, 0, 0, 0);
+  const y = cutoff.getFullYear();
+  const m = String(cutoff.getMonth() + 1).padStart(2, "0");
+  const d = String(cutoff.getDate()).padStart(2, "0");
+  const cutoffStr = `${y}-${m}-${d}`;
+  return allLogs.filter(l => l.date >= cutoffStr);
+}
+
+function renderChart() {
+  const logs   = logsInRange(activeRange);
+  const canvas = document.getElementById("pain-chart");
+  const empty  = document.getElementById("chart-empty");
+
+  if (chart) { chart.destroy(); chart = null; }
+
+  if (logs.length === 0) {
+    canvas.style.display = "none";
+    empty.classList.add("show");
+    renderStats([]);
+    return;
+  }
+
+  canvas.style.display = "";
+  empty.classList.remove("show");
+
+  const labels = logs.map(l => fmtDate(l.date));
+  const values = logs.map(l => l.level);
+  const ctx    = canvas.getContext("2d");
+
+  const grad = ctx.createLinearGradient(0, 0, 0, 200);
+  grad.addColorStop(0, "rgba(78,201,176,0.28)");
+  grad.addColorStop(1, "rgba(78,201,176,0.02)");
+
+  chart = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels,
+      datasets: [{
+        data:             values,
+        borderColor:      "#4ec9b0",
+        backgroundColor:  grad,
+        borderWidth:      2.5,
+        pointBackgroundColor: values.map(v => painColor(v)),
+        pointBorderColor: "transparent",
+        pointRadius:      5,
+        pointHoverRadius: 7,
+        tension:          0.35,
+        fill:             true
+      }]
+    },
+    options: {
+      responsive:          true,
+      maintainAspectRatio: true,
+      animation:           { duration: 280 },
+      scales: {
+        y: {
+          min: 0,
+          max: 10,
+          ticks: { stepSize: 2, color: "#4a5272", font: { size: 11 } },
+          grid:  { color: "#1a2030" },
+          border:{ color: "transparent" }
+        },
+        x: {
+          ticks: {
+            color: "#4a5272",
+            font:  { size: 10 },
+            maxRotation: 30,
+            maxTicksLimit: 8
+          },
+          grid:  { display: false },
+          border:{ color: "transparent" }
+        }
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: "#1e2438",
+          titleColor:      "#8892b0",
+          bodyColor:       "#e6e9f4",
+          padding:         10,
+          cornerRadius:    10,
+          callbacks: {
+            label: ctx => ` Level ${ctx.parsed.y} — ${painDesc(ctx.parsed.y)}`
+          }
+        }
+      }
+    }
+  });
+
+  renderStats(logs);
+}
+
+function renderStats(logs) {
+  const set = (id, val) => { document.getElementById(id).textContent = val; };
+
+  if (logs.length === 0) {
+    set("st-avg",    "—");
+    set("st-low",    "—"); set("st-low-d",  "");
+    set("st-high",   "—"); set("st-high-d", "");
+    set("tr-icon",   "—");
+    set("tr-main",   "No data for this range");
+    set("tr-detail", "");
+    return;
+  }
+
+  const vals   = logs.map(l => l.level);
+  const avg    = vals.reduce((a, b) => a + b, 0) / vals.length;
+  const minVal = Math.min(...vals);
+  const maxVal = Math.max(...vals);
+  const minLog = logs.find(l => l.level === minVal);
+  const maxLog = logs.find(l => l.level === maxVal);
+
+  set("st-avg",   avg.toFixed(1));
+  set("st-low",   minVal);
+  set("st-low-d", fmtDate(minLog.date));
+  set("st-high",  maxVal);
+  set("st-high-d",fmtDate(maxLog.date));
+
+  if (logs.length < 4) {
+    set("tr-icon",   "→");
+    set("tr-main",   "Stable");
+    set("tr-detail", "Log more days to see a trend");
+    return;
+  }
+
+  const half    = Math.floor(vals.length / 2);
+  const fhAvg   = vals.slice(0, half).reduce((a, b) => a + b, 0) / half;
+  const shAvg   = vals.slice(vals.length - half).reduce((a, b) => a + b, 0) / half;
+  const delta   = shAvg - fhAvg;
+
+  if (delta < -0.5) {
+    set("tr-icon",   "↘");
+    set("tr-main",   "Improving");
+    set("tr-detail", `Down ${Math.abs(delta).toFixed(1)} pts on average`);
+  } else if (delta > 0.5) {
+    set("tr-icon",   "↗");
+    set("tr-main",   "Worsening");
+    set("tr-detail", `Up ${delta.toFixed(1)} pts on average`);
+  } else {
+    set("tr-icon",   "→");
+    set("tr-main",   "Stable");
+    set("tr-detail", "No significant change");
+  }
+}
+
+// --- HISTORY SCREEN ---
+function renderHistory() {
+  const list   = document.getElementById("history-list");
+  const sorted = [...allLogs].sort((a, b) => b.date.localeCompare(a.date));
+
+  if (sorted.length === 0) {
+    list.innerHTML = `
+      <div class="empty">
+        <div class="empty-icon">🦵</div>
+        <div class="empty-text">No entries yet.<br>Log your first pain level to get started.</div>
+      </div>`;
+    return;
+  }
+
+  list.innerHTML = "";
+
+  sorted.forEach(log => {
+    const wrap = document.createElement("div");
+    wrap.className = "h-row-wrap";
+    wrap.dataset.id = log.id;
+
+    const item = document.createElement("div");
+    item.className = "h-item";
+    item.innerHTML = `
+      <span class="h-dot" style="background:${painColor(log.level)}"></span>
+      <span class="h-date">${fmtDate(log.date)}</span>
+      <span class="h-level" style="color:${painColor(log.level)}">${log.level}</span>
+      <button class="h-del" aria-label="Delete entry for ${fmtDate(log.date)}">✕</button>`;
+
+    const confirm = document.createElement("div");
+    confirm.className = "h-confirm";
+    confirm.innerHTML = `
+      <div class="h-confirm-text">Delete entry for ${fmtDate(log.date)}?</div>
+      <div class="h-confirm-row">
+        <button class="h-yes">Delete</button>
+        <button class="h-no">Cancel</button>
+      </div>`;
+
+    item.querySelector(".h-del").addEventListener("click", () => {
+      // Close any other open confirms first
+      document.querySelectorAll(".h-confirm.show").forEach(el => {
+        if (el !== confirm) el.classList.remove("show");
+      });
+      confirm.classList.toggle("show");
+    });
+
+    confirm.querySelector(".h-no").addEventListener("click", () => {
+      confirm.classList.remove("show");
+    });
+
+    confirm.querySelector(".h-yes").addEventListener("click", () => {
+      deleteEntry(log.id, log.date);
+    });
+
+    wrap.appendChild(item);
+    wrap.appendChild(confirm);
+    list.appendChild(wrap);
+  });
+}
+
+async function deleteEntry(id, date) {
+  try {
+    await col.doc(id).delete();
+    allLogs = allLogs.filter(l => l.id !== id);
+
+    if (date === todayStr()) {
+      todayId = null;
+      pickedLevel = null;
+      applySelection(null);
+    }
+
+    hideError();
+    renderHistory();
+    if (document.getElementById("screen-chart").classList.contains("active")) {
+      renderChart();
+    }
+  } catch (e) {
+    showError("Delete failed. Check your connection.");
+  }
+}
+
+// --- NAVIGATION ---
+function initNav() {
+  document.querySelectorAll(".nav-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const target = btn.dataset.screen;
+      document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
+      document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+      btn.classList.add("active");
+      document.getElementById(`screen-${target}`).classList.add("active");
+      if (target === "chart") renderChart();
+    });
+  });
+
+  document.querySelectorAll(".range-tab").forEach(tab => {
+    tab.addEventListener("click", () => {
+      document.querySelectorAll(".range-tab").forEach(t => t.classList.remove("active"));
+      tab.classList.add("active");
+      activeRange = tab.dataset.r;
+      renderChart();
+    });
+  });
+}
+
+// --- DATE LABEL ---
+function setDateLabel() {
+  document.getElementById("date-label").textContent =
+    new Date().toLocaleDateString("en-US", {
+      weekday: "long", month: "long", day: "numeric"
+    });
+}
+
+// --- INIT ---
+setDateLabel();
+buildPainGrid();
+initNav();
+loadAll();
+</script>
+</body>
+</html>
