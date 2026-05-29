@@ -7,6 +7,12 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+
+  <link rel="icon" href="icon.ico" />
+  <link rel="apple-touch-icon" href="png.png" />
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#0d1117" />
+
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Knee Pain Tracker</title>
@@ -77,6 +83,7 @@
       flex: 1;
       padding: 32px 20px calc(var(--nav-h) + 24px);
       animation: pop-in 0.22s ease both;
+      overflow: hidden; 
     }
     .screen.active { display: flex; }
 
@@ -84,6 +91,15 @@
       from { opacity: 0; transform: translateY(8px); }
       to   { opacity: 1; transform: translateY(0); }
     }
+#screen-history {
+  padding-bottom: 0; 
+}
+
+#history-list {
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: calc(var(--nav-h) + 24px); 
+}
 
     /* --- HEADINGS --- */
     .screen-title {
