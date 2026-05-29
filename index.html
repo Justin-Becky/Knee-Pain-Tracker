@@ -1,40 +1,6 @@
 <!--
   ============================================================
-  KNEE PAIN TRACKER — Setup Guide
-  ============================================================
-
-  1. CREATE A FIREBASE PROJECT
-     a. Go to https://console.firebase.google.com/
-     b. Click "Add project" and follow the steps (analytics optional)
-     c. Once created, click the web icon </> to register a web app
-     d. Copy the firebaseConfig object shown after registration
-
-  2. ENABLE FIRESTORE
-     a. In Firebase Console sidebar: Build > Firestore Database
-     b. Click "Create database"
-     c. Choose "Start in test mode" (lets you read/write for 30 days)
-     d. Pick a region close to you and click "Done"
-     e. To keep access beyond 30 days, update the security rules:
-        rules_version = '2';
-        service cloud.firestore {
-          match /databases/{database}/documents {
-            match /pain_logs/{doc} {
-              allow read, write: if true;
-            }
-          }
-        }
-
-  3. PASTE YOUR CONFIG
-     Find the comment "REPLACE THIS CONFIG" below and replace the
-     placeholder firebaseConfig object with your own values.
-
-  4. DEPLOY TO GITHUB PAGES
-     a. Create a new GitHub repository (public)
-     b. Upload this index.html to the repository root
-     c. Go to the repo Settings > Pages
-     d. Under "Source", select "Deploy from a branch"
-     e. Choose the main branch and / (root) folder, then Save
-     f. Your app will be live at https://yourusername.github.io/reponame/
+  KNEE PAIN TRACKER — A simple web app to log and visualize daily knee pain levels.
   ============================================================
 -->
 <!DOCTYPE html>
